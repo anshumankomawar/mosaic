@@ -1,17 +1,31 @@
-import { useEffect, useState } from 'react';
+import { saveDocument } from "@/api/document";
 import Tiptap from "@/components/tiptap/Tiptap";
-import { useTabStore } from "@/stores/tabStore";
 import { Button } from "@/components/ui/button";
+import { useTabStore } from "@/stores/tabStore";
 import { FileEditIcon, Plus } from "lucide-react";
+import { useState } from "react";
 
 export function TabContent() {
-  const { tabs, activeTabId, createTab, getActiveTab, updateTab } = useTabStore();
+  const { tabs, activeTabId, createTab, getActiveTab, updateTab } =
+    useTabStore();
   const activeTab = getActiveTab();
-  
-  // Content synchronization
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+
   const handleContentChange = (content: string) => {
     if (activeTabId) {
       updateTab(activeTabId, { content });
+
+      if (saveTimeout && activeTab) {
+        clearTimeout(saveTimeout);
+        const timeout = setTimeout(() => {
+          // TODO: use update document
+          saveDocument({
+            title: activeTab.title,
+            content,
+          });
+        }, 5000); // 5 seconds of inactivity before saving
+        setSaveTimeout(timeout);
+      }
     }
   };
 
@@ -36,7 +50,7 @@ export function TabContent() {
   // When we have an active tab
   return (
     <div className="flex-1 h-full overflow-auto">
-      <Tiptap 
+      <Tiptap
         initialContent={activeTab.content}
         onUpdate={handleContentChange}
       />

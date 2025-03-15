@@ -28,6 +28,15 @@ export interface Tab {
   editorState: EditorState;
 }
 
+// Document interface to match your API response
+export interface Document {
+  id: string;
+  name: string; 
+  type: string; 
+  content: string;
+  created_at: Date;
+}
+
 // Default editor state
 const createDefaultEditorState = (): EditorState => ({
   scrollPosition: 0,
@@ -42,8 +51,14 @@ const createDefaultEditorState = (): EditorState => ({
 });
 
 interface TabState {
+  // Original tab state
   tabs: Tab[];
   activeTabId: string | null;
+  
+  // Document cache state
+  documents: Document[];
+  documentsLastFetched: number | null;
+  isLoadingDocuments: boolean;
   
   // Tab operations
   createTab: (title?: string, content?: string) => string;
@@ -65,14 +80,31 @@ interface TabState {
   setContent: (content: string) => void;
   getTitle: () => string;
   setTitle: (title: string) => void;
+  
+  // Document operations
+  setDocuments: (documents: Document[]) => void;
+  getDocuments: () => Document[];
+  setIsLoadingDocuments: (isLoading: boolean) => void;
+  getCachedDocuments: (maxAge?: number) => Promise<Document[]>;
+  openDocumentInTab: (documentId: string) => Promise<string | null>;
+  refreshDocuments: () => Promise<Document[]>;
 }
 
+// Import the getFiles function
+import { getFiles, saveDocument } from '@/api/document';
 export const useTabStore = create<TabState>()(
   persist(
     (set, get) => ({
+      // Original tab state
       tabs: [],
       activeTabId: null,
       
+      // Document cache state
+      documents: [],
+      documentsLastFetched: null,
+      isLoadingDocuments: false,
+      
+      // Tab operations
       createTab: (title = 'Untitled', content = '<h1></h1><p></p>') => {
         const id = nanoid();
         const now = Date.now();
@@ -82,14 +114,26 @@ export const useTabStore = create<TabState>()(
           content,
           createdAt: now,
           updatedAt: now,
-          editorState: createDefaultEditorState()
+          editorState: createDefaultEditorState(),
         };
-        
-        set((state) => ({
-          tabs: [...state.tabs, newTab],
-          activeTabId: id,
-        }));
-        
+      
+        set((state) => {
+          const newDocument: Document = {
+            id,
+            name: title,
+            type: "text/html", // Adjust this type based on actual usage
+            content,
+            created_at: new Date(),
+          };
+      
+          return {
+            tabs: [...state.tabs, newTab],
+            activeTabId: id,
+            documents: [...state.documents, newDocument], // Update document cache
+            documentsLastFetched: now, // Refresh timestamp
+          };
+        });
+      
         return id;
       },
       
@@ -130,6 +174,17 @@ export const useTabStore = create<TabState>()(
       },
       
       setActiveTab: (id) => {
+        const { activeTabId, getActiveTab } = get();
+        if (activeTabId) {
+          const activeTab = getActiveTab();
+          if (activeTab) {
+            // TODO: use update document
+            saveDocument({ 
+              title: activeTab.title, 
+              content: activeTab.content, 
+            });
+          }
+        }
         set({ activeTabId: id });
       },
       
@@ -198,9 +253,89 @@ export const useTabStore = create<TabState>()(
           get().updateTab(activeTabId, { title });
         }
       },
+      
+      // Document operations
+      setDocuments: (documents) => {
+        set({ 
+          documents,
+          documentsLastFetched: Date.now()
+        });
+      },
+      
+      getDocuments: () => {
+        return get().documents;
+      },
+      
+      setIsLoadingDocuments: (isLoading) => {
+        set({ isLoadingDocuments: isLoading });
+      },
+      
+      // Get cached documents or fetch from API if cache is stale
+      // maxAge is in milliseconds, defaults to 5 minutes
+      getCachedDocuments: async (maxAge = 5 * 60 * 1000) => {
+        const { documents, documentsLastFetched, isLoadingDocuments } = get();
+        
+        // If already loading, return current documents
+        if (isLoadingDocuments) {
+          return documents;
+        }
+        
+        // Check if we have documents and if they're still fresh
+        const now = Date.now();
+        const isCacheFresh = documentsLastFetched && (now - documentsLastFetched < maxAge);
+        
+        // Return cached documents if they're fresh
+        if (documents.length > 0 && isCacheFresh) {
+          return documents;
+        }
+        
+        // Otherwise fetch fresh documents
+        return get().refreshDocuments();
+      },
+      
+      // Force a refresh of documents from the API
+      refreshDocuments: async () => {
+        const { setIsLoadingDocuments, setDocuments } = get();
+        
+        setIsLoadingDocuments(true);
+        try {
+          const documents = await getFiles();
+          setDocuments(documents);
+          return documents;
+        } catch (error) {
+          console.error("Failed to fetch documents:", error);
+          // Return current documents on error
+          return get().documents;
+        } finally {
+          setIsLoadingDocuments(false);
+        }
+      },
+      
+      // Open a document from cache in a new tab
+      openDocumentInTab: async (documentId) => {
+        const { documents, createTab, setActiveTab } = get();
+        
+        // Try to find document in cache
+        let document = documents.find(doc => doc.id === documentId);
+        
+        // If not in cache, try to fetch documents
+        if (!document) {
+          const freshDocuments = await get().refreshDocuments();
+          document = freshDocuments.find(doc => doc.id === documentId);
+        }
+        
+        // If document found, open in new tab
+        if (document) {
+          const tabId = createTab(document.name, document.content);
+          setActiveTab(tabId);
+          return tabId;
+        }
+        
+        return null;
+      }
     }),
     {
-      name: 'editor-tabs',
+      name: 'editor-state',
       partialize: (state) => ({
         tabs: state.tabs.map(tab => ({
           ...tab,
@@ -210,7 +345,10 @@ export const useTabStore = create<TabState>()(
             selection: null,
           }
         })),
-        activeTabId: state.activeTabId
+        activeTabId: state.activeTabId,
+        // Cache the documents but not loading state
+        documents: state.documents,
+        documentsLastFetched: state.documentsLastFetched
       }),
     }
   )

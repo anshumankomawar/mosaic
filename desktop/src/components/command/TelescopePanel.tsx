@@ -5,29 +5,34 @@ import { Input } from "@/components/ui/input";
 import { TelescopeDialog } from "@/components/command/TelescopeDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { FileText, Search, Clock } from "lucide-react";
+import { FileText, Search, Clock, AlertCircle } from "lucide-react";
+import { getFiles } from "@/api/document";
 
-// Mock file data (replace with your actual data source)
-const mockFiles = [
-  { id: "1", title: "Project Overview", type: "document", content: "<h1>Project Overview</h1><p>This is an overview of our project...</p>", lastModified: new Date(2023, 3, 15) },
-  { id: "2", title: "Meeting Notes", type: "document", content: "<h1>Meeting Notes</h1><p>Discussion points from our last meeting...</p>", lastModified: new Date(2023, 3, 10) },
-  { id: "3", title: "Research Findings", type: "document", content: "<h1>Research Findings</h1><p>Our research indicates the following trends...</p>", lastModified: new Date(2023, 3, 5) },
-  { id: "4", title: "Product Roadmap", type: "document", content: "<h1>Product Roadmap</h1><p>Our roadmap for the next quarter includes...</p>", lastModified: new Date(2023, 2, 28) },
-  { id: "5", title: "Design System", type: "document", content: "<h1>Design System</h1><p>Guidelines for our design system...</p>", lastModified: new Date(2023, 2, 20) },
-  { id: "6", title: "API Documentation", type: "document", content: "<h1>API Documentation</h1><p>Endpoints and usage examples...</p>", lastModified: new Date(2023, 2, 15) },
-  { id: "7", title: "Content Strategy", type: "document", content: "<h1>Content Strategy</h1><p>Our approach to content creation and distribution...</p>", lastModified: new Date(2023, 2, 10) },
-  { id: "8", title: "Team OKRs", type: "document", content: "<h1>Team OKRs</h1><p>Objectives and key results for this quarter...</p>", lastModified: new Date(2023, 2, 5) },
-  { id: "9", title: "User Feedback", type: "document", content: "<h1>User Feedback</h1><p>Summary of recent user interviews and feedback...</p>", lastModified: new Date(2023, 1, 28) },
-];
+// Match the mock file structure you were using before
+interface Document {
+  id: string;
+  name: string; 
+  type: string; 
+  content: string;
+  created_at: Date;
+}
 
 interface FileItemProps {
-  file: any;
+  file: Document;
   isSelected: boolean;
   onSelect: () => void;
   onOpenTab: () => void;
 }
 
 const FileItem = ({ file, isSelected, onSelect, onOpenTab }: FileItemProps) => {
+  // Format date properly whether it's a string or Date object
+  const formatDate = (date: Date | string) => {
+    if (date instanceof Date) {
+      return date.toLocaleDateString();
+    }
+    return new Date(date).toLocaleDateString();
+  };
+
   return (
     <div
       className={cn(
@@ -40,9 +45,9 @@ const FileItem = ({ file, isSelected, onSelect, onOpenTab }: FileItemProps) => {
       onDoubleClick={onOpenTab}
     >
       <FileText className="w-4 h-4 shrink-0" />
-      <span className="flex-grow truncate">{file.title}</span>
+      <span className="flex-grow truncate">{file.name}</span>
       <span className="text-xs text-muted-foreground">
-        {file.lastModified.toLocaleDateString()}
+        {formatDate(file.created_at)}
       </span>
     </div>
   );
@@ -50,26 +55,55 @@ const FileItem = ({ file, isSelected, onSelect, onOpenTab }: FileItemProps) => {
 
 export function TelescopePanel() {
   const panel = usePanelStore((state) => state);
-  const { createTab, setActiveTab } = useTabStore();
+  const { createTab, setActiveTab, getCachedDocuments } = useTabStore();
   
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [filteredFiles, setFilteredFiles] = useState(mockFiles);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [filteredFiles, setFilteredFiles] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  
+  // Fetch documents when the panel opens
+  useEffect(() => {
+    if (panel.editor) {
+      fetchDocuments();
+    }
+  }, [panel.editor]);
+  
+  // Fetch documents from the API
+  const fetchDocuments = async () => {
+    setIsLoading(true);
+    setError("");
+    
+    try {
+      // Use the getFiles function to fetch documents
+      // const data = await getFiles();
+      const data = await getCachedDocuments(); 
+      setDocuments(data);
+      setFilteredFiles(data);
+    } catch (err) {
+      console.error("Failed to fetch documents:", err);
+      setError("Failed to load documents");
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // Filter files based on search query
   useEffect(() => {
     if (!query) {
-      setFilteredFiles(mockFiles);
+      setFilteredFiles(documents);
     } else {
-      const filtered = mockFiles.filter(file => 
-        file.title.toLowerCase().includes(query.toLowerCase())
+      const filtered = documents.filter(doc => 
+        doc.name.toLowerCase().includes(query.toLowerCase())
       );
       setFilteredFiles(filtered);
     }
     
     // Reset selection when results change
     setSelectedIndex(0);
-  }, [query]);
+  }, [query, documents]);
   
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -95,9 +129,11 @@ export function TelescopePanel() {
     }
   };
   
-  // Open the selected file in a new tab
-  const openFile = (file: any) => {
-    const tabId = createTab(file.title, file.content);
+  // Open file in a new tab
+  const openFile = (file: Document) => {
+    // For this version, we assume the content is already available
+    // in the file object, just like in your mock data
+    const tabId = createTab(file.name, file.content);
     setActiveTab(tabId);
     panel.setPanel(Panel.EDITOR, false);
   };
@@ -133,9 +169,18 @@ export function TelescopePanel() {
             </div>
             
             <ScrollArea className="h-[calc(66vh-6rem)]">
-              <div className="px-1 py-2">
-                {filteredFiles.length > 0 ? (
-                  filteredFiles.map((file, index) => (
+              {isLoading ? (
+                <div className="px-2 py-6 text-sm text-center text-muted-foreground">
+                  Loading documents...
+                </div>
+              ) : error ? (
+                <div className="flex flex-col items-center justify-center px-2 py-6 text-sm text-center text-red-500">
+                  <AlertCircle className="w-5 h-5 mb-2" />
+                  {error}
+                </div>
+              ) : filteredFiles.length > 0 ? (
+                <div className="px-1 py-2">
+                  {filteredFiles.map((file, index) => (
                     <FileItem
                       key={file.id}
                       file={file}
@@ -143,13 +188,13 @@ export function TelescopePanel() {
                       onSelect={() => setSelectedIndex(index)}
                       onOpenTab={() => openFile(file)}
                     />
-                  ))
-                ) : (
-                  <div className="px-2 py-6 text-sm text-center text-muted-foreground">
-                    No matching files found
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-2 py-6 text-sm text-center text-muted-foreground">
+                  {documents.length === 0 ? "No documents found" : "No matching files found"}
+                </div>
+              )}
             </ScrollArea>
           </div>
           
@@ -172,13 +217,19 @@ export function TelescopePanel() {
                 <div className="p-4">
                   <div className="flex items-center gap-2 mb-4">
                     <FileText className="w-5 h-5" />
-                    <h3 className="text-lg font-medium">{selectedFile.title}</h3>
+                    <h3 className="text-lg font-medium">{selectedFile.name}</h3>
                   </div>
                   
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center text-muted-foreground">
                       <Clock className="w-4 h-4 mr-2" />
-                      <span>Modified {selectedFile.lastModified.toLocaleDateString()}</span>
+                      <span>Modified {selectedFile.created_at instanceof Date ? 
+                        selectedFile.created_at.toLocaleDateString() : 
+                        new Date(selectedFile.created_at).toLocaleDateString()}</span>
+                    </div>
+                    
+                    <div className="flex items-center text-muted-foreground">
+                      <span className="ml-6">Type: {selectedFile.type}</span>
                     </div>
                     
                     <div className="pt-4 mt-4 border-t">

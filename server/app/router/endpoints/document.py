@@ -113,3 +113,25 @@ async def update_document(update: UpdateDocumentRequest, request: Request):
             return Response(f"Failed to save chunk with exception: {e}", status_code=500)
           
     return Response("Document updated successfully", status_code=200)
+
+async def get_documents(request: Request):
+    supabase_client = request.state.supabase
+    user_id = request.state.user_id
+    
+    try:
+        # Fetch all documents for the current user
+        response = supabase_client.table(DOCUMENTS_TABLE) \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .execute()
+        
+        documents = response.data
+        return {
+            "documents": documents,
+            "count": len(documents)
+        }
+    except Exception as e:
+        logger.e(f"Failed to fetch documents with exception: {e}")
+        return {
+            "message": f"Failed to fetch documents with exception: {e}"
+        }
