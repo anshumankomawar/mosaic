@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
+import { debounce } from 'lodash';
+import { getFiles, saveDocument } from '@/api/document';
 
-// Define editor state that will be stored per tab
 export interface EditorState {
   scrollPosition: number;
   cursorPosition: number;
@@ -18,7 +19,6 @@ export interface EditorState {
   };
 }
 
-// Extended Tab interface with editor state
 export interface Tab {
   id: string;
   title: string;
@@ -26,9 +26,10 @@ export interface Tab {
   createdAt: number;
   updatedAt: number;
   editorState: EditorState;
+  saveError?: boolean;
+  pendingSave?: boolean;
 }
 
-// Document interface to match your API response
 export interface Document {
   id: string;
   name: string; 
@@ -37,7 +38,6 @@ export interface Document {
   created_at: Date;
 }
 
-// Default editor state
 const createDefaultEditorState = (): EditorState => ({
   scrollPosition: 0,
   cursorPosition: 0,
@@ -51,314 +51,359 @@ const createDefaultEditorState = (): EditorState => ({
 });
 
 interface TabState {
-  // Original tab state
   tabs: Tab[];
   activeTabId: string | null;
-  
-  // Document cache state
   documents: Document[];
   documentsLastFetched: number | null;
   isLoadingDocuments: boolean;
   
-  // Tab operations
-  createTab: (title?: string, content?: string) => string;
-  updateTab: (id: string, updates: Partial<Omit<Tab, 'id' | 'createdAt' | 'editorState'>>) => void;
-  deleteTab: (id: string) => void;
-  setActiveTab: (id: string) => void;
+  createTab: (
+    title?: string, 
+    content?: string, 
+    onSuccess?: (tabId: string) => void,
+    onError?: (error: Error) => void
+  ) => string;
+  
+  updateTab: (
+    id: string, 
+    updates: Partial<Omit<Tab, 'id' | 'createdAt' | 'editorState'>>,
+    onSuccess?: () => void,
+    onError?: (error: Error) => void
+  ) => void;
+  
+  deleteTab: (
+    id: string, 
+    onSuccess?: () => void,
+    onError?: (error: Error) => void
+  ) => void;
+  
+  setActiveTab: (
+    id: string, 
+    onSuccess?: () => void,
+    onError?: (error: Error) => void
+  ) => void;
+  
   getActiveTab: () => Tab | undefined;
   
-  // Editor state operations
   updateEditorState: (id: string, updates: Partial<EditorState>) => void;
   updateActiveEditorState: (updates: Partial<EditorState>) => void;
   getEditorState: (id: string) => EditorState | undefined;
   
-  // Format state convenience methods
   setFormatState: (id: string, formats: Partial<EditorState['activeFormats']>) => void;
   
-  // Content getters/setters that operate on the active tab
   getContent: () => string;
-  setContent: (content: string) => void;
-  getTitle: () => string;
-  setTitle: (title: string) => void;
+  setContent: (
+    content: string, 
+    onSuccess?: () => void,
+    onError?: (error: Error) => void
+  ) => void;
   
-  // Document operations
+  getTitle: () => string;
+  setTitle: (
+    title: string, 
+    onSuccess?: () => void,
+    onError?: (error: Error) => void
+  ) => void;
+  
   setDocuments: (documents: Document[]) => void;
   getDocuments: () => Document[];
   setIsLoadingDocuments: (isLoading: boolean) => void;
   getCachedDocuments: (maxAge?: number) => Promise<Document[]>;
-  openDocumentInTab: (documentId: string) => Promise<string | null>;
+  openDocumentInTab: (
+    documentId: string, 
+    onSuccess?: (tabId: string) => void,
+    onError?: (error: Error) => void
+  ) => Promise<string | null>;
   refreshDocuments: () => Promise<Document[]>;
 }
 
-// Import the getFiles function
-import { getFiles, saveDocument } from '@/api/document';
 export const useTabStore = create<TabState>()(
   persist(
-    (set, get) => ({
-      // Original tab state
-      tabs: [],
-      activeTabId: null,
-      
-      // Document cache state
-      documents: [],
-      documentsLastFetched: null,
-      isLoadingDocuments: false,
-      
-      // Tab operations
-      createTab: (title = 'Untitled', content = '<h1></h1><p></p>') => {
-        const id = nanoid();
-        const now = Date.now();
-        const newTab: Tab = {
-          id,
-          title,
-          content,
-          createdAt: now,
-          updatedAt: now,
-          editorState: createDefaultEditorState(),
-        };
-      
-        set((state) => {
-          const newDocument: Document = {
-            id,
-            name: title,
-            type: "text/html", // Adjust this type based on actual usage
-            content,
-            created_at: new Date(),
-          };
-      
-          return {
-            tabs: [...state.tabs, newTab],
-            activeTabId: id,
-            documents: [...state.documents, newDocument], // Update document cache
-            documentsLastFetched: now, // Refresh timestamp
-          };
-        });
-      
-        return id;
-      },
-      
-      updateTab: (id, updates) => {
-        set((state) => ({
-          tabs: state.tabs.map((tab) => 
-            tab.id === id 
-              ? { 
-                  ...tab, 
-                  ...updates, 
-                  updatedAt: Date.now() 
-                } 
-              : tab
-          )
-        }));
-      },
-      
-      deleteTab: async (id) => {
-        const { tabs, activeTabId } = get();
-        const tabToDelete = tabs.find((tab) => tab.id === id);
-      
-        // Save the document before deleting
-        if (tabToDelete) {
+    (set, get) => {
+      const debouncedSave = debounce(
+        async (tabToSave: Tab) => {
           try {
-            await saveDocument({ title: tabToDelete.title, content: tabToDelete.content });
-            console.log("Document saved before deleting tab.");
+            const tabClone = { ...tabToSave };
+
+            await saveDocument({ 
+              title: tabClone.title, 
+              content: tabClone.content 
+            });
           } catch (error) {
-            console.error("Failed to save document before deleting tab:", error);
+            console.error("Failed to save document:", error);
           }
+        }, 
+        1000,
+        { 
+          leading: false, 
+          trailing: true 
         }
-      
-        const filteredTabs = tabs.filter((tab) => tab.id !== id);
-      
-        // Determine the new active tab
-        let newActiveId = activeTabId;
-        if (activeTabId === id) {
-          const idx = tabs.findIndex((tab) => tab.id === id);
-          if (filteredTabs.length > 0) {
-            newActiveId = filteredTabs[Math.min(idx, filteredTabs.length - 1)].id;
-          } else {
-            newActiveId = null;
+      );
+
+      return {
+        tabs: [],
+        activeTabId: null,
+        
+        documents: [],
+        documentsLastFetched: null,
+        isLoadingDocuments: false,
+        
+        createTab: (
+          title = 'Untitled', 
+          content = '<h1></h1><p></p>', 
+          onSuccess, 
+          onError
+        ) => {
+          const id = nanoid();
+          const now = Date.now();
+          const newTab: Tab = {
+            id,
+            title,
+            content,
+            createdAt: now,
+            updatedAt: now,
+            editorState: createDefaultEditorState()
+          };
+        
+          set((state) => {
+            const newDocument: Document = {
+              id,
+              name: title,
+              type: "text/html",
+              content,
+              created_at: new Date(),
+            };
+        
+            return {
+              tabs: [...state.tabs, newTab],
+              activeTabId: id,
+              documents: [...state.documents, newDocument],
+              documentsLastFetched: now,
+            };
+          });
+        
+          onSuccess?.(id);
+          return id;
+        },
+        
+        updateTab: (id, updates, onSuccess, onError) => {
+          const currentTab = get().tabs.find(tab => tab.id === id);
+          if (!currentTab) return;
+
+          const updatedTab = { 
+            ...currentTab, 
+            ...updates, 
+            updatedAt: Date.now()
+          };
+
+          set((state) => ({
+            tabs: state.tabs.map((tab) => 
+              tab.id === id 
+                ? { 
+                    ...tab, 
+                    ...updates, 
+                    updatedAt: Date.now()
+                  } 
+                : tab
+            )
+          }));
+
+          if (updates.content) {
+            debouncedSave(updatedTab);
           }
-        }
-      
-        set({
-          tabs: filteredTabs,
-          activeTabId: newActiveId,
-        });
-      },
-      
-      
-      setActiveTab: (id) => {
-        const { activeTabId, getActiveTab } = get();
-        if (activeTabId) {
-          const activeTab = getActiveTab();
-          if (activeTab) {
-            // TODO: use update document
-            saveDocument({ 
-              title: activeTab.title, 
-              content: activeTab.content, 
+
+          onSuccess?.();
+        },
+        
+        deleteTab: (id, onSuccess, onError) => {
+          const { tabs, activeTabId } = get();
+          const filteredTabs = tabs.filter((tab) => tab.id !== id);
+        
+          let newActiveId = activeTabId;
+          if (activeTabId === id) {
+            const idx = tabs.findIndex((tab) => tab.id === id);
+            if (filteredTabs.length > 0) {
+              newActiveId = filteredTabs[Math.min(idx, filteredTabs.length - 1)].id;
+            } else {
+              newActiveId = null;
+            }
+          }
+        
+          set({
+            tabs: filteredTabs,
+            activeTabId: newActiveId,
+          });
+
+          onSuccess?.();
+        },
+        
+        setActiveTab: (id, onSuccess, onError) => {
+          const { tabs } = get();
+          
+          const newActiveTab = tabs.find(tab => tab.id === id);
+          if (!newActiveTab) return;
+
+          set({ activeTabId: id });
+          onSuccess?.();
+        },
+        
+        getActiveTab: () => {
+          const { tabs, activeTabId } = get();
+          return tabs.find((tab) => tab.id === activeTabId);
+        },
+        
+        updateEditorState: (id, updates) => {
+          set((state) => ({
+            tabs: state.tabs.map((tab) => 
+              tab.id === id 
+                ? { 
+                    ...tab, 
+                    editorState: { ...tab.editorState, ...updates },
+                  } 
+                : tab
+            )
+          }));
+        },
+        
+        updateActiveEditorState: (updates) => {
+          const { activeTabId } = get();
+          if (activeTabId) {
+            get().updateEditorState(activeTabId, updates);
+          }
+        },
+        
+        getEditorState: (id) => {
+          const tab = get().tabs.find(tab => tab.id === id);
+          return tab?.editorState;
+        },
+        
+        setFormatState: (id, formats) => {
+          const tab = get().tabs.find(tab => tab.id === id);
+          if (tab) {
+            get().updateEditorState(id, {
+              activeFormats: { ...tab.editorState.activeFormats, ...formats }
             });
           }
-        }
-        set({ activeTabId: id });
-      },
-      
-      getActiveTab: () => {
-        const { tabs, activeTabId } = get();
-        return tabs.find((tab) => tab.id === activeTabId);
-      },
-      
-      updateEditorState: (id, updates) => {
-        // Only update if there are actually changes
-        set((state) => ({
-          tabs: state.tabs.map((tab) => 
-            tab.id === id 
-              ? { 
-                  ...tab, 
-                  editorState: { ...tab.editorState, ...updates },
-                } 
-              : tab
-          )
-        }));
-      },
-      
-      updateActiveEditorState: (updates) => {
-        const { activeTabId } = get();
-        if (activeTabId) {
-          get().updateEditorState(activeTabId, updates);
-        }
-      },
-      
-      getEditorState: (id) => {
-        const tab = get().tabs.find(tab => tab.id === id);
-        return tab?.editorState;
-      },
-      
-      // Format state convenience methods
-      setFormatState: (id, formats) => {
-        const tab = get().tabs.find(tab => tab.id === id);
-        if (tab) {
-          get().updateEditorState(id, {
-            activeFormats: { ...tab.editorState.activeFormats, ...formats }
+        },
+        
+        getContent: () => {
+          const activeTab = get().getActiveTab();
+          return activeTab?.content || '';
+        },
+        
+        setContent: (content, onSuccess, onError) => {
+          const { activeTabId } = get();
+          if (activeTabId) {
+            get().updateTab(activeTabId, { content }, onSuccess, onError);
+          }
+        },
+        
+        getTitle: () => {
+          const activeTab = get().getActiveTab();
+          return activeTab?.title || 'Untitled';
+        },
+        
+        setTitle: (title, onSuccess, onError) => {
+          const { activeTabId } = get();
+          if (activeTabId) {
+            get().updateTab(activeTabId, { title }, onSuccess, onError);
+          }
+        },
+        
+        setDocuments: (documents) => {
+          set({ 
+            documents,
+            documentsLastFetched: Date.now()
           });
-        }
-      },
-      
-      // Content getters/setters
-      getContent: () => {
-        const activeTab = get().getActiveTab();
-        return activeTab?.content || '';
-      },
-      
-      setContent: (content) => {
-        const { activeTabId } = get();
-        if (activeTabId) {
-          get().updateTab(activeTabId, { content });
-        }
-      },
-      
-      getTitle: () => {
-        const activeTab = get().getActiveTab();
-        return activeTab?.title || 'Untitled';
-      },
-      
-      setTitle: (title) => {
-        const { activeTabId } = get();
-        if (activeTabId) {
-          get().updateTab(activeTabId, { title });
-        }
-      },
-      
-      // Document operations
-      setDocuments: (documents) => {
-        set({ 
-          documents,
-          documentsLastFetched: Date.now()
-        });
-      },
-      
-      getDocuments: () => {
-        return get().documents;
-      },
-      
-      setIsLoadingDocuments: (isLoading) => {
-        set({ isLoadingDocuments: isLoading });
-      },
-      
-      // Get cached documents or fetch from API if cache is stale
-      // maxAge is in milliseconds, defaults to 5 minutes
-      getCachedDocuments: async (maxAge = 5 * 60 * 1000) => {
-        const { documents, documentsLastFetched, isLoadingDocuments } = get();
+        },
         
-        // If already loading, return current documents
-        if (isLoadingDocuments) {
-          return documents;
-        }
-        
-        // Check if we have documents and if they're still fresh
-        const now = Date.now();
-        const isCacheFresh = documentsLastFetched && (now - documentsLastFetched < maxAge);
-        
-        // Return cached documents if they're fresh
-        if (documents.length > 0 && isCacheFresh) {
-          return documents;
-        }
-        
-        // Otherwise fetch fresh documents
-        return get().refreshDocuments();
-      },
-      
-      // Force a refresh of documents from the API
-      refreshDocuments: async () => {
-        const { setIsLoadingDocuments, setDocuments } = get();
-        
-        setIsLoadingDocuments(true);
-        try {
-          const documents = await getFiles();
-          setDocuments(documents);
-          return documents;
-        } catch (error) {
-          console.error("Failed to fetch documents:", error);
-          // Return current documents on error
+        getDocuments: () => {
           return get().documents;
-        } finally {
-          setIsLoadingDocuments(false);
+        },
+        
+        setIsLoadingDocuments: (isLoading) => {
+          set({ isLoadingDocuments: isLoading });
+        },
+        
+        getCachedDocuments: async (maxAge = 5 * 60 * 1000) => {
+          const { documents, documentsLastFetched, isLoadingDocuments } = get();
+          
+          if (isLoadingDocuments) {
+            return documents;
+          }
+          
+          const now = Date.now();
+          const isCacheFresh = documentsLastFetched && (now - documentsLastFetched < maxAge);
+          
+          if (documents.length > 0 && isCacheFresh) {
+            return documents;
+          }
+          
+          return get().refreshDocuments();
+        },
+        
+        refreshDocuments: async () => {
+          const { setIsLoadingDocuments, setDocuments } = get();
+          
+          setIsLoadingDocuments(true);
+          try {
+            const documents = await getFiles();
+            setDocuments(documents);
+            return documents;
+          } catch (error) {
+            console.error("Failed to fetch documents:", error);
+            return get().documents;
+          } finally {
+            setIsLoadingDocuments(false);
+          }
+        },
+        
+        openDocumentInTab: async (
+          documentId, 
+          onSuccess, 
+          onError
+        ) => {
+          const { documents, createTab, setActiveTab } = get();
+          
+          let document = documents.find(doc => doc.id === documentId);
+          
+          if (!document) {
+            try {
+              const freshDocuments = await get().refreshDocuments();
+              document = freshDocuments.find(doc => doc.id === documentId);
+            } catch (error) {
+              onError?.(error as Error);
+              return null;
+            }
+          }
+          
+          if (document) {
+            const tabId = createTab(document.name, document.content, 
+              (createdTabId) => {
+                setActiveTab(createdTabId);
+                onSuccess?.(createdTabId);
+              },
+              onError
+            );
+            
+            return tabId;
+          }
+          
+          return null;
         }
-      },
-      
-      // Open a document from cache in a new tab
-      openDocumentInTab: async (documentId) => {
-        const { documents, createTab, setActiveTab } = get();
-        
-        // Try to find document in cache
-        let document = documents.find(doc => doc.id === documentId);
-        
-        // If not in cache, try to fetch documents
-        if (!document) {
-          const freshDocuments = await get().refreshDocuments();
-          document = freshDocuments.find(doc => doc.id === documentId);
-        }
-        
-        // If document found, open in new tab
-        if (document) {
-          const tabId = createTab(document.name, document.content);
-          setActiveTab(tabId);
-          return tabId;
-        }
-        
-        return null;
-      }
-    }),
+      };
+    },
     {
       name: 'editor-state',
       partialize: (state) => ({
         tabs: state.tabs.map(tab => ({
           ...tab,
-          // Don't persist selection state
           editorState: {
             ...tab.editorState,
             selection: null,
           }
         })),
         activeTabId: state.activeTabId,
-        // Cache the documents but not loading state
         documents: state.documents,
         documentsLastFetched: state.documentsLastFetched
       }),

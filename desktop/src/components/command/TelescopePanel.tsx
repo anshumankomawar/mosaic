@@ -78,8 +78,8 @@ export function TelescopePanel() {
     
     try {
       // Use the getFiles function to fetch documents
-      // const data = await getFiles();
-      const data = await getCachedDocuments(); 
+      const data = await getFiles();
+      //const data = await getCachedDocuments(); 
       setDocuments(data);
       setFilteredFiles(data);
     } catch (err) {
