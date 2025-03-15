@@ -32,7 +32,7 @@ export function RootLayout({ children, showSidebar = true }: RootLayoutProps) {
     
     // Create a default tab if none exists
     if (tabs.length === 0) {
-      createTab("Untitled", "<p>Welcome to your editor!</p>");
+      createTab();
     }
   }, []);
 
