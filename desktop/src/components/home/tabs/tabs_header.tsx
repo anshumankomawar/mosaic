@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Search } from "lucide-react";
 import { Tab, useTabStore } from "@/stores/tabStore";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import clsx from 'clsx';
@@ -8,8 +8,9 @@ import { isTauri } from '@/platform';
 import { useRef, useEffect, useState } from "react";
 import SettingsDropdown from "@/components/home/tabs/settings_dropdown";
 import { logout } from "@/api/auth";
-import { useNavigate } from "react-router-dom";
 import { Panel, usePanelStore } from "@/stores/commandStore";
+import { Input } from "@/components/ui/input";
+import { useViewStore, View } from "@/stores/viewStore";
 
 const TabItem = ({ 
   tab, 
@@ -48,13 +49,11 @@ const TabItem = ({
       onClick={onClick}
       data-active={isActive}
       data-index={index}
-      // Important: Explicitly set this not to be a drag region
       data-tauri-drag-region={false}
     >
       {/* Tab content */}
       <span 
         className="truncate max-w-[120px] relative z-10"
-        // Important: Explicitly set this not to be a drag region
         data-tauri-drag-region={false}
       >
         {tab.title}
@@ -65,7 +64,6 @@ const TabItem = ({
           isActive && "opacity-100"
         )}
         onClick={onClose}
-        // Important: Explicitly set this not to be a drag region
         data-tauri-drag-region={false}
       >
         <X size={14} />
@@ -126,7 +124,6 @@ export function TabsHeader() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeTabPos, setActiveTabPos] = useState<{ left: number, right: number } | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
-  const navigate = useNavigate();
   const commandStore = usePanelStore();
   
   const updateActiveTabPosition = (rect: DOMRect | null) => {
@@ -166,20 +163,18 @@ export function TabsHeader() {
     commandStore.setPanel(Panel.SETTINGS, true);
   };
 
+  const viewStore = useViewStore((state) => state);
+
   const handleLogout = async () => {
     try {
       console.log("Logout clicked");
       await logout();
+      console.log("Logout successful");
+      viewStore.setView(View.LOGIN, { authRequired: true });
       
-      // Add a small delay to ensure state updates complete
-      setTimeout(() => {
-        navigate("/login", { replace: true });
-        navigate(0)
-      }, 100);
     } catch (error) {
       console.error("Logout error:", error);
-      navigate("/login", { replace: true });
-      navigate(0)
+      viewStore.setView(View.LOGIN, { authRequired: true });
     }
   };
 

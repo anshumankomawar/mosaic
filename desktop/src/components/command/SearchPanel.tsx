@@ -11,19 +11,19 @@ import { CaseSensitive, CircleCheck } from "lucide-react";
 import * as React from "react";
 import { DatePickerWithRange } from "../ui/datepicker";
 import { Input } from "../ui/input";
-import { useNavigate } from "react-router-dom";
+import { useViewStore, View } from "@/stores/viewStore";
 
 export function SearchPanel() {
-  const navigate = useNavigate();
   const panel = usePanelStore((state) => state);
+  const viewStore = useViewStore((state) => state);
   const [caseSensitive, setCaseSensitive] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      console.log('HERE');
-      navigate(`/search`);
-      panel.setPanel(Panel.SEARCH, false); 
+      console.log('Search triggered');
+      panel.setPanel(Panel.SEARCH, false);
+      viewStore.setView(View.SEARCH)
     }
   };
 
@@ -39,6 +39,7 @@ export function SearchPanel() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleKeyDown}
+          autoFocus
         />
       </CommandItem>
       <CommandList>

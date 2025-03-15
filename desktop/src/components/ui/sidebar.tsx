@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
 import { isTauri } from "@/platform";
+import useViewStore from "@/stores/viewStore";
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -315,11 +316,20 @@ const SidebarNavigator = React.forwardRef<
 >(({ className, onClick, onNavigateLeft, onNavigateRight, ...props }, ref) => {
   const { open } = useSidebar();
   const [isMacOS, setIsMacOS] = React.useState(false);
-  const navigate = useNavigate();
+  const viewStore = useViewStore();
   
   React.useEffect(() => {
     setIsMacOS(navigator.platform.toLowerCase().includes('mac'));
   }, []);
+  
+  const handleNavigateLeft = () => {
+    // Use browser history API directly instead of React Router
+    viewStore.goBack();
+  };
+  
+  const handleNavigateRight = () => {
+    viewStore.goForward();
+  };
   
   return (
     <div 
@@ -336,9 +346,7 @@ const SidebarNavigator = React.forwardRef<
         variant="ghost"
         size="icon_sm"
         className="h-7 w-7 min-w-7"
-        onClick={(event) => {
-          navigate(-1);
-        }}
+        onClick={handleNavigateLeft}
         {...props}
       >
         <ArrowLeft className="stroke-zinc-800" />
@@ -351,7 +359,7 @@ const SidebarNavigator = React.forwardRef<
         className="h-7 w-7 min-w-7"
         onClick={(event) => {
           onClick?.(event);
-          onNavigateRight?.();
+          handleNavigateRight();
         }}
         {...props}
       >

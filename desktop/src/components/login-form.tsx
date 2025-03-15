@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { GalleryVerticalEnd } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { login } from "@/api/auth";
+import { useViewStore, View } from "@/stores/viewStore";
 
 export function LoginForm({
   className,
@@ -15,7 +15,7 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
+  const viewStore = useViewStore((state) => state);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,13 +24,21 @@ export function LoginForm({
     
     try {
       await login({ email, password });
-      navigate("/");
+      console.log('Login successful');
+      viewStore.setView(View.HOME);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Login failed");
+      viewStore.setView(View.HOME);
     } finally {
       setIsLoading(false);
+      viewStore.setView(View.HOME);
     }
+  };
+  
+  const navigateToRegister = () => {
+    // Use direct window.location navigation
+    viewStore.setView(View.REGISTER);
   };
 
   return (
@@ -94,7 +102,7 @@ export function LoginForm({
             <div className="text-center text-xs">
               Don't have an account?{" "}
               <a 
-                onClick={() => navigate('/register')} 
+                onClick={navigateToRegister} 
                 className="text-primary hover:underline cursor-pointer font-medium"
               >
                 Sign up

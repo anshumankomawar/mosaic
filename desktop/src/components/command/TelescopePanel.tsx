@@ -6,7 +6,6 @@ import { TelescopeDialog } from "@/components/command/TelescopeDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { FileText, Search, Clock } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 // Mock file data (replace with your actual data source)
 const mockFiles = [
@@ -52,7 +51,6 @@ const FileItem = ({ file, isSelected, onSelect, onOpenTab }: FileItemProps) => {
 export function TelescopePanel() {
   const panel = usePanelStore((state) => state);
   const { createTab, setActiveTab } = useTabStore();
-  const navigate = useNavigate();
   
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
