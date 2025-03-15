@@ -1,5 +1,6 @@
 import { getToken } from "@/lib/stronghold";
 import useSummaryStore from "@/stores/summaryStore";
+import { toast } from "sonner";
 
 /**
  *
@@ -110,8 +111,7 @@ export async function searchDocuments(query: string, fileType?: string) {
 export async function saveDocument(props: DocumentProps) {
   const { title, content } = props;
   const token = await getToken();
-  console.log("payload ", content)
-  const testContent = "<h1>Test</h1><p>This is a test</p>";
+  toast("Saving current document...");
   const response = await fetch("http://localhost:8000/secure/document", {
     method: "POST",
     headers: {
@@ -120,7 +120,7 @@ export async function saveDocument(props: DocumentProps) {
     },
     body: JSON.stringify({
       name: title,
-      file_content: "testteststetset",
+      file_content: content,
       file_type: "txt"
     }),
   });
@@ -131,6 +131,7 @@ export async function saveDocument(props: DocumentProps) {
     return;
   }
   console.log(response);
+  toast("Failed to save document");
   throw new Error(`Failed to save document: ${response}`);
 }
 

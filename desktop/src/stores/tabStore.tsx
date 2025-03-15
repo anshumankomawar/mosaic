@@ -151,27 +151,39 @@ export const useTabStore = create<TabState>()(
         }));
       },
       
-      deleteTab: (id) => {
+      deleteTab: async (id) => {
         const { tabs, activeTabId } = get();
+        const tabToDelete = tabs.find((tab) => tab.id === id);
+      
+        // Save the document before deleting
+        if (tabToDelete) {
+          try {
+            await saveDocument({ title: tabToDelete.title, content: tabToDelete.content });
+            console.log("Document saved before deleting tab.");
+          } catch (error) {
+            console.error("Failed to save document before deleting tab:", error);
+          }
+        }
+      
         const filteredTabs = tabs.filter((tab) => tab.id !== id);
-        
-        // If we're deleting the active tab, switch to another tab
+      
+        // Determine the new active tab
         let newActiveId = activeTabId;
         if (activeTabId === id) {
           const idx = tabs.findIndex((tab) => tab.id === id);
           if (filteredTabs.length > 0) {
-            // Prefer the tab to the right, or if none, the tab to the left
             newActiveId = filteredTabs[Math.min(idx, filteredTabs.length - 1)].id;
           } else {
             newActiveId = null;
           }
         }
-        
+      
         set({
           tabs: filteredTabs,
           activeTabId: newActiveId,
         });
       },
+      
       
       setActiveTab: (id) => {
         const { activeTabId, getActiveTab } = get();
