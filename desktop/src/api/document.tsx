@@ -112,6 +112,7 @@ export async function saveDocument(props: DocumentProps) {
   const { title, content } = props;
   const token = await getToken();
   toast("Saving current document...");
+  console.log("HERES TITLE", title)
   const response = await fetch("http://localhost:8000/secure/document", {
     method: "POST",
     headers: {

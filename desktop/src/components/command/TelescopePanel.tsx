@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from "react";
-import { Panel, usePanelStore } from "@/stores/commandStore";
-import { useTabStore } from "@/stores/tabStore";
-import { Input } from "@/components/ui/input";
+import { getFiles } from "@/api/document";
 import { TelescopeDialog } from "@/components/command/TelescopeDialog";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { FileText, Search, Clock, AlertCircle } from "lucide-react";
-import { getFiles } from "@/api/document";
+import { Panel, usePanelStore } from "@/stores/commandStore";
+import { useTabStore } from "@/stores/tabStore";
+import { AlertCircle, Clock, FileText, Search } from "lucide-react";
+import React, { forwardRef, useEffect, useRef, useState } from "react";
 
 // Match the mock file structure you were using before
 interface Document {
   id: string;
-  name: string; 
-  type: string; 
+  name: string;
+  type: string;
   content: string;
   created_at: Date;
 }
@@ -24,62 +24,62 @@ interface FileItemProps {
   onOpenTab: () => void;
 }
 
-const FileItem = ({ file, isSelected, onSelect, onOpenTab }: FileItemProps) => {
-  // Format date properly whether it's a string or Date object
-  const formatDate = (date: Date | string) => {
-    if (date instanceof Date) {
-      return date.toLocaleDateString();
-    }
-    return new Date(date).toLocaleDateString();
-  };
+const FileItem = forwardRef<HTMLDivElement, FileItemProps>(
+  ({ file, isSelected, onSelect, onOpenTab }, ref) => {
+    const formatDate = (date: Date | string) => {
+      if (date instanceof Date) {
+        return date.toLocaleDateString();
+      }
+      return new Date(date).toLocaleDateString();
+    };
 
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer",
-        isSelected 
-          ? "bg-accent text-accent-foreground" 
-          : "hover:bg-accent/50"
-      )}
-      onClick={onSelect}
-      onDoubleClick={onOpenTab}
-    >
-      <FileText className="w-4 h-4 shrink-0" />
-      <span className="flex-grow truncate">{file.name}</span>
-      <span className="text-xs text-muted-foreground">
-        {formatDate(file.created_at)}
-      </span>
-    </div>
-  );
-};
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer",
+          isSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+        )}
+        onClick={onSelect}
+        onDoubleClick={onOpenTab}
+      >
+        <FileText className="w-4 h-4 shrink-0" />
+        <span className="flex-grow truncate">{file.name}</span>
+        <span className="text-xs text-muted-foreground">
+          {formatDate(file.created_at)}
+        </span>
+      </div>
+    );
+  }
+);
 
 export function TelescopePanel() {
   const panel = usePanelStore((state) => state);
   const { createTab, setActiveTab, getCachedDocuments } = useTabStore();
-  
+
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  
+
   // Fetch documents when the panel opens
   useEffect(() => {
     if (panel.editor) {
       fetchDocuments();
     }
   }, [panel.editor]);
-  
+
   // Fetch documents from the API
   const fetchDocuments = async () => {
     setIsLoading(true);
     setError("");
-    
+
     try {
       // Use the getFiles function to fetch documents
       const data = await getFiles();
-      //const data = await getCachedDocuments(); 
+      // const data = await getCachedDocuments();
       setDocuments(data);
       setFilteredFiles(data);
     } catch (err) {
@@ -89,34 +89,43 @@ export function TelescopePanel() {
       setIsLoading(false);
     }
   };
-  
+
   // Filter files based on search query
   useEffect(() => {
     if (!query) {
       setFilteredFiles(documents);
     } else {
-      const filtered = documents.filter(doc => 
-        doc.name.toLowerCase().includes(query.toLowerCase())
+      const filtered = documents.filter((doc) =>
+        doc.name.toLowerCase().includes(query.toLowerCase()),
       );
       setFilteredFiles(filtered);
     }
-    
+
     // Reset selection when results change
     setSelectedIndex(0);
   }, [query, documents]);
-  
+
   // Handle keyboard navigation
+  const fileRefs = useRef<(HTMLDivElement | null)[]>([]);
+  
+  // Update selection and scroll to the selected item
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setSelectedIndex(prev => 
-          prev < filteredFiles.length - 1 ? prev + 1 : prev
-        );
+        setSelectedIndex(prev => {
+          const newIndex = prev < filteredFiles.length - 1 ? prev + 1 : prev;
+          fileRefs.current[newIndex]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          return newIndex;
+        });
         break;
       case "ArrowUp":
         e.preventDefault();
-        setSelectedIndex(prev => (prev > 0 ? prev - 1 : prev));
+        setSelectedIndex(prev => {
+          const newIndex = prev > 0 ? prev - 1 : prev;
+          fileRefs.current[newIndex]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          return newIndex;
+        });
         break;
       case "Enter":
         if (filteredFiles[selectedIndex]) {
@@ -137,9 +146,9 @@ export function TelescopePanel() {
     setActiveTab(tabId);
     panel.setPanel(Panel.EDITOR, false);
   };
-  
+
   const selectedFile = filteredFiles[selectedIndex];
-  
+
   return (
     <TelescopeDialog
       open={panel.editor}
@@ -157,7 +166,7 @@ export function TelescopePanel() {
             autoFocus
           />
         </div>
-        
+
         <div className="flex flex-1 overflow-hidden">
           {/* File list */}
           <div className="w-1/2 border-r">
@@ -167,7 +176,7 @@ export function TelescopePanel() {
                 {filteredFiles.length} results
               </span>
             </div>
-            
+
             <ScrollArea className="h-[calc(66vh-6rem)]">
               {isLoading ? (
                 <div className="px-2 py-6 text-sm text-center text-muted-foreground">
@@ -187,17 +196,20 @@ export function TelescopePanel() {
                       isSelected={index === selectedIndex}
                       onSelect={() => setSelectedIndex(index)}
                       onOpenTab={() => openFile(file)}
+                      ref={el => fileRefs.current[index] = el}
                     />
                   ))}
                 </div>
               ) : (
                 <div className="px-2 py-6 text-sm text-center text-muted-foreground">
-                  {documents.length === 0 ? "No documents found" : "No matching files found"}
+                  {documents.length === 0
+                    ? "No documents found"
+                    : "No matching files found"}
                 </div>
               )}
             </ScrollArea>
           </div>
-          
+
           {/* Preview pane */}
           <div className="flex flex-col w-1/2">
             <div className="flex items-center px-3 py-1.5 border-b bg-muted/50">
@@ -211,7 +223,7 @@ export function TelescopePanel() {
                 </button>
               )}
             </div>
-            
+
             <ScrollArea className="flex-1">
               {selectedFile ? (
                 <div className="p-4">
@@ -219,23 +231,30 @@ export function TelescopePanel() {
                     <FileText className="w-5 h-5" />
                     <h3 className="text-lg font-medium">{selectedFile.name}</h3>
                   </div>
-                  
+
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center text-muted-foreground">
                       <Clock className="w-4 h-4 mr-2" />
-                      <span>Modified {selectedFile.created_at instanceof Date ? 
-                        selectedFile.created_at.toLocaleDateString() : 
-                        new Date(selectedFile.created_at).toLocaleDateString()}</span>
+                      <span>
+                        Modified{" "}
+                        {selectedFile.created_at instanceof Date
+                          ? selectedFile.created_at.toLocaleDateString()
+                          : new Date(
+                              selectedFile.created_at,
+                            ).toLocaleDateString()}
+                      </span>
                     </div>
-                    
+
                     <div className="flex items-center text-muted-foreground">
                       <span className="ml-6">Type: {selectedFile.type}</span>
                     </div>
-                    
+
                     <div className="pt-4 mt-4 border-t">
-                      <div 
+                      <div
                         className="prose prose-sm dark:prose-invert max-w-none"
-                        dangerouslySetInnerHTML={{ __html: selectedFile.content }}
+                        dangerouslySetInnerHTML={{
+                          __html: selectedFile.content,
+                        }}
                       />
                     </div>
                   </div>
@@ -248,7 +267,7 @@ export function TelescopePanel() {
             </ScrollArea>
           </div>
         </div>
-        
+
         {/* Status bar */}
         <div className="flex items-center px-3 py-1.5 text-xs border-t bg-muted/50 text-muted-foreground">
           <div className="flex items-center gap-4">

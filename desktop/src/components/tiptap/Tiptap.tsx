@@ -220,12 +220,12 @@ export default (props: TiptapProps) => {
         }
         
         // Restore selection/cursor if available
-        if (activeTab.editorState?.selection) {
-            const { from, to } = activeTab.editorState.selection;
-            editor.commands.setTextSelection({ from, to });
-        } else if (activeTab.editorState?.cursorPosition) {
-            editor.commands.setTextSelection(activeTab.editorState.cursorPosition);
-        }
+        // if (activeTab.editorState?.selection) {
+        //     const { from, to } = activeTab.editorState.selection;
+        //     editor.commands.setTextSelection({ from, to });
+        // } else if (activeTab.editorState?.cursorPosition) {
+        //     editor.commands.setTextSelection(activeTab.editorState.cursorPosition);
+        // }
     }, [editor, activeTabId, activeTab]);
     
     // Track scroll position

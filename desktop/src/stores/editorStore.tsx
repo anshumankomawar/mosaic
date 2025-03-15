@@ -141,7 +141,7 @@ const useEditorStore = create<EditorStoreState>()(
       },
       
       setCursorPosition: (tabId, position) => {
-        get().updateEditorState(tabId, { cursorPosition: position });
+        // get().updateEditorState(tabId, { cursorPosition: position });
       },
       
       setSelection: (tabId, from, to) => {
