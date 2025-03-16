@@ -3,6 +3,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.router.dependencies import get_router_deps
+from app.router.endpoints.access import add_document_access
 from app.router.endpoints.document import create_document, delete_document, update_document, get_documents
 from app.router.endpoints.friend import add_friend
 from app.router.endpoints.login import login
@@ -31,6 +32,9 @@ def init_router():
     secure_app.add_api_route("/search_friends", search_friends, methods=["POST"])
     secure_app.add_api_route("/summarize", summarize, methods=["POST"])
     secure_app.add_api_route("/file_search", file_search, methods=["POST"])
+
+    # Document Access endpoints
+    secure_app.add_api_route("/document/access", add_document_access, methods=["POST"])
 
     public_app = FastAPI(dependencies=[Depends(get_router_deps)], root_path="/public")
     public_app.add_api_route("/login", login, methods=["POST"])
