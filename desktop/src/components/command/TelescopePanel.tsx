@@ -3,6 +3,7 @@ import { TelescopeDialog } from "@/components/command/TelescopeDialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { documentCache } from "@/services/DocumentCacheService";
 import { Panel, usePanelStore } from "@/stores/commandStore";
 import { useTabStore } from "@/stores/tabStore";
 import { AlertCircle, Clock, FileText, Search } from "lucide-react";
@@ -55,7 +56,7 @@ const FileItem = forwardRef<HTMLDivElement, FileItemProps>(
 
 export function TelescopePanel() {
   const panel = usePanelStore((state) => state);
-  const { createTab, setActiveTab, getCachedDocuments } = useTabStore();
+  const { createTab, setActiveTab } = useTabStore();
 
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -78,8 +79,8 @@ export function TelescopePanel() {
 
     try {
       // Use the getFiles function to fetch documents
-      const data = await getFiles();
-      // const data = await getCachedDocuments();
+      // const data = await getFiles();
+      const data = await documentCache.getCachedDocuments();
       setDocuments(data);
       setFilteredFiles(data);
     } catch (err) {

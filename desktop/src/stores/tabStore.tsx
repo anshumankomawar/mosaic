@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 import { debounce } from 'lodash';
-import { getFiles, saveDocument } from '@/api/document';
+import { saveDocument } from '@/api/document';
+import { documentCache } from '@/services/DocumentCacheService'; 
 
 export interface EditorState {
   scrollPosition: number;
@@ -108,7 +109,6 @@ interface TabState {
   setDocuments: (documents: Document[]) => void;
   getDocuments: () => Document[];
   setIsLoadingDocuments: (isLoading: boolean) => void;
-  getCachedDocuments: (maxAge?: number) => Promise<Document[]>;
   openDocumentInTab: (
     documentId: string, 
     onSuccess?: (tabId: string) => void,
@@ -120,6 +120,15 @@ interface TabState {
 export const useTabStore = create<TabState>()(
   persist(
     (set, get) => {
+      // Async function to refresh cache without blocking
+      const refreshCacheAsync = async () => {
+        try {
+          await documentCache.refreshCache();
+        } catch (error) {
+          console.error("Background cache refresh failed:", error);
+        }
+      };
+
       const debouncedSave = debounce(
         async (tabToSave: Tab) => {
           try {
@@ -129,6 +138,9 @@ export const useTabStore = create<TabState>()(
               title: tabClone.title, 
               content: tabClone.content 
             });
+            
+            // After successful save, refresh the cache asynchronously
+            refreshCacheAsync();
           } catch (error) {
             console.error("Failed to save document:", error);
           }
@@ -183,6 +195,10 @@ export const useTabStore = create<TabState>()(
           });
         
           onSuccess?.(id);
+          
+          // Refresh cache asynchronously after creating a new tab
+          refreshCacheAsync();
+          
           return id;
         },
         
@@ -208,7 +224,7 @@ export const useTabStore = create<TabState>()(
             )
           }));
 
-          if (updates.content) {
+          if (updates.content || updates.title) {
             debouncedSave(updatedTab);
           }
 
@@ -235,6 +251,9 @@ export const useTabStore = create<TabState>()(
           });
 
           onSuccess?.();
+          
+          // Refresh cache asynchronously after deleting a tab
+          refreshCacheAsync();
         },
         
         setActiveTab: (id, onSuccess, onError) => {
@@ -325,29 +344,13 @@ export const useTabStore = create<TabState>()(
           set({ isLoadingDocuments: isLoading });
         },
         
-        getCachedDocuments: async (maxAge = 5 * 60 * 1000) => {
-          const { documents, documentsLastFetched, isLoadingDocuments } = get();
-          
-          if (isLoadingDocuments) {
-            return documents;
-          }
-          
-          const now = Date.now();
-          const isCacheFresh = documentsLastFetched && (now - documentsLastFetched < maxAge);
-          
-          if (documents.length > 0 && isCacheFresh) {
-            return documents;
-          }
-          
-          return get().refreshDocuments();
-        },
-        
         refreshDocuments: async () => {
           const { setIsLoadingDocuments, setDocuments } = get();
           
           setIsLoadingDocuments(true);
           try {
-            const documents = await getFiles();
+            // Use document cache instead of direct API call
+            const documents = await documentCache.refreshCache();
             setDocuments(documents);
             return documents;
           } catch (error) {
@@ -369,8 +372,14 @@ export const useTabStore = create<TabState>()(
           
           if (!document) {
             try {
-              const freshDocuments = await get().refreshDocuments();
-              document = freshDocuments.find(doc => doc.id === documentId);
+              // Try getting the document from cache first
+              document = await documentCache.getDocument(documentId);
+              
+              // If not in cache, refresh and try again
+              if (!document) {
+                const freshDocuments = await get().refreshDocuments();
+                document = freshDocuments.find(doc => doc.id === documentId);
+              }
             } catch (error) {
               onError?.(error as Error);
               return null;
