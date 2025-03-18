@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - LLM__OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM__ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - LLM__COHERE_API_KEY=${COHERE_API_KEY}
+      - LLM__MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./app:/app
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  redis-data:
