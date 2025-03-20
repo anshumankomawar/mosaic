@@ -9,17 +9,21 @@ import openai
 import json
 import time
 import httpx
+import os
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
 
 from app.models.search import LLMProvider
 from app.config import get_settings
 from app.logging_config import get_logger
 
+load_dotenv()
+
 logger = get_logger(__name__)
 settings = get_settings()
 
-# Configure OpenAI
-openai.api_key = settings.LLM.OPENAI_API_KEY
+# Configure OpenAI with API key from environment variables
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 async def generate_openai_response(

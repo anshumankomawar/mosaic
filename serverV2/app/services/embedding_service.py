@@ -13,19 +13,22 @@ import json
 import httpx
 from enum import Enum
 from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
 from app.config import get_settings
 from app.logging_config import get_logger
 
+load_dotenv()
+
 logger = get_logger(__name__)
 settings = get_settings()
 
-# Get the API key directly from settings - matching your structure
-openai_api_key = settings.LLM.OPENAI_API_KEY
+# Get the API key from environment variable
+openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # Initialize AsyncOpenAI client
 if not openai_api_key:
-    raise Exception("OpenAI API key not found in settings")
+    raise Exception("OpenAI API key not found in environment variables")
 
 async_openai_client = AsyncOpenAI(api_key=openai_api_key)
 
