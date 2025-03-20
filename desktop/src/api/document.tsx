@@ -37,6 +37,48 @@ export async function summarize(query: string, textContents: string[]) {
 }
 
 /**
+ * Update an existing document
+ * @param props Object containing document update properties
+ * @returns The updated document data
+ * @throws Error - If the document fails to update
+ */
+export async function updateDocument(props: {
+  documentId: string;
+  title: string;
+  content: string;
+  fileType?: string;
+}) {
+  const { documentId, title, content, fileType = "txt" } = props;
+  const token = await getToken();
+  
+  toast("Updating document...");
+  
+  const response = await fetch("http://localhost:8000/document", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      document_id: documentId,
+      name: title,
+      file_content: content,
+      file_type: fileType
+    }),
+  });
+
+  if (response.ok) {
+    const data = await response.json();
+    console.log("Updated document with response: ", data);
+    toast.success("Document updated successfully");
+    return data;
+  }
+  
+  toast.error("Failed to update document");
+  throw new Error(`Failed to update document: ${response.statusText}`);
+}
+
+/**
  *
  * @param query - Search string used to find the relevant documents
  * @returns - JSON response from the API call

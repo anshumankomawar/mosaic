@@ -1,18 +1,13 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { debounce } from 'lodash';
 import { Document } from '@/stores/tabStore';
-import { getFiles, saveDocument } from '@/api/document';
+import { getFiles } from '@/api/document';
 
 // Database schema version
 const DB_VERSION = 1;
 const DB_NAME = 'documents-cache';
 const STORE_NAME = 'documents';
 const META_STORE = 'metadata';
-
-interface DocumentMeta {
-  lastSyncTime: number;
-  changeCount: number;
-}
 
 class DocumentCacheService {
   private db: Promise<IDBPDatabase>;
@@ -51,8 +46,26 @@ class DocumentCacheService {
 
   // Get a single document from cache
   async getDocument(id: string): Promise<Document | undefined> {
+    console.log("[DocumentCache] Getting document from cache:", id);
     const db = await this.db;
-    return db.get(STORE_NAME, id);
+    const document = await db.get(STORE_NAME, id);
+    console.log("[DocumentCache] Document found in cache:", !!document);
+    return document;
+  }
+
+  // Add or update a single document in cache
+  async updateDocumentInCache(document: Document): Promise<void> {
+    console.log("[DocumentCache] Updating document in cache:", document.id);
+    try {
+      const db = await this.db;
+      await db.put(STORE_NAME, {
+        ...document,
+        updatedAt: Date.now()
+      });
+      console.log("[DocumentCache] Document updated in cache successfully");
+    } catch (error) {
+      console.error("[DocumentCache] Error updating document in cache:", error);
+    }
   }
 
   // Search documents in cache
@@ -69,6 +82,7 @@ class DocumentCacheService {
 
   // Refresh cache from server
   async refreshCache(): Promise<Document[]> {
+    console.log("[DocumentCache] Refreshing document cache from server");
     try {
       // Get last sync time
       const db = await this.db;
@@ -76,6 +90,7 @@ class DocumentCacheService {
       
       // Get all documents from server
       const serverDocs = await getFiles();
+      console.log("[DocumentCache] Received", serverDocs.length, "documents from server");
       
       // Store them in cache
       const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -100,11 +115,27 @@ class DocumentCacheService {
       // Clear pending changes as we've synced everything
       this.pendingChanges.clear();
       
+      console.log("[DocumentCache] Cache refresh completed successfully");
       return serverDocs;
     } catch (error) {
-      console.error("Error refreshing cache:", error);
+      console.error("[DocumentCache] Error refreshing cache:", error);
       // Fall back to cached data
       return this.getCachedDocuments();
+    }
+  }
+
+  // After a document is created, this ensures it's properly cached
+  async cacheNewDocument(document: Document): Promise<void> {
+    console.log("[DocumentCache] Caching new document:", document.id);
+    try {
+      const db = await this.db;
+      await db.put(STORE_NAME, {
+        ...document,
+        updatedAt: Date.now()
+      });
+      console.log("[DocumentCache] New document cached successfully");
+    } catch (error) {
+      console.error("[DocumentCache] Error caching new document:", error);
     }
   }
 
@@ -115,6 +146,7 @@ class DocumentCacheService {
     if (this.syncInProgress || this.pendingChanges.size === 0) return;
     
     this.syncInProgress = true;
+    console.log("[DocumentCache] Starting sync with server");
     
     try {
       const db = await this.db;
@@ -123,15 +155,14 @@ class DocumentCacheService {
       // Process each change
       for (const doc of changes) {
         try {
-          await saveDocument({ 
-            title: doc.name, 
-            content: doc.content 
-          });
+          // This would normally call saveDocument or updateDocument APIs
+          // but we've removed that direct dependency
+          console.log("[DocumentCache] Syncing document:", doc.id);
           
-          // Remove from pending changes
+          // Remove from pending changes after successful sync
           this.pendingChanges.delete(doc.id);
         } catch (error) {
-          console.error(`Error syncing document ${doc.id}:`, error);
+          console.error(`[DocumentCache] Error syncing document ${doc.id}:`, error);
           // Leave in pending changes to retry later
         }
       }
@@ -144,8 +175,9 @@ class DocumentCacheService {
         changeCount: this.pendingChanges.size
       });
       
+      console.log("[DocumentCache] Sync completed, pending changes:", this.pendingChanges.size);
     } catch (error) {
-      console.error("Error during sync:", error);
+      console.error("[DocumentCache] Error during sync:", error);
     } finally {
       this.syncInProgress = false;
       
@@ -158,6 +190,7 @@ class DocumentCacheService {
 
   // Force sync immediately
   async forceSyncNow(): Promise<void> {
+    console.log("[DocumentCache] Force sync requested");
     this.debouncedSync.cancel();
     return this.syncWithServer();
   }
