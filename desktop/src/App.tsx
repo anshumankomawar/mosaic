@@ -48,10 +48,17 @@ function App() {
     
     checkAuth();
   }, []);
-  
+
   useEffect(() => {
+    //For first time login, if currentView is changed to home, we need to update
+    //isAuth to true in App, or else it won't navigate to home page
+    if (isAuth === false && currentView === View.HOME) {
+      console.log("Authenticated, redirecting to home");
+      setIsAuth(true);
+    }
     console.log("App rendering with view:", currentView);
-  }, [currentView]);
+  }, [currentView]); 
+  
   
   if (isAuth === null && currentView !== View.LOGIN && currentView !== View.REGISTER) {
     console.log("Auth check in progress, showing loader");

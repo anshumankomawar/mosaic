@@ -29,10 +29,9 @@ export function LoginForm({
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "Login failed");
-      viewStore.setView(View.HOME);
+      viewStore.setView(View.LOGIN);
     } finally {
       setIsLoading(false);
-      viewStore.setView(View.HOME);
     }
   };
   
